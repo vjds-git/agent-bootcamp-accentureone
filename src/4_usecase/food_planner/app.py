@@ -24,6 +24,8 @@ from src.utils.tools.gemini_grounding import (
     ModelSettings,
 )
 
+from food_agent import FoodPlanner
+
 
 async def _main(
     query: str, history: list[ChatMessage], session_state: dict[str, Any]
@@ -71,58 +73,31 @@ if __name__ == "__main__":
     # Set up LangFuse for tracing
     setup_langfuse_tracer()
 
-    #TODO: Decide if a different client that does not include Weaviate kb can be initialized
     # Initialize client manager
-    # This class initializes the OpenAI and Weaviate async clients, as well as the
-    # Weaviate knowledge base tool. The initialization is done once when the clients
-    # are first accessed, and the clients are reused for subsequent calls.
     client_manager = AsyncClientManager()
 
     # Use smaller, faster model for focused search tasks
-    worker_model = client_manager.configs.default_worker_model
+    # worker_model = client_manager.configs.default_worker_model
     # Use larger, more capable model for complex planning and reasoning
     planner_model = client_manager.configs.default_planner_model
 
-    gemini_grounding_tool = GeminiGroundingWithGoogleSearch(
-        model_settings=ModelSettings(model=worker_model)
-    )
-
-    # Worker Agent: handles long context efficiently
-    kb_agent = agents.Agent(
-        name="KnowledgeBaseAgent",
-        instructions="""
-            You are an agent specialized in searching a knowledge base.
-            You will receive a single search query as input.
-            Use the 'search_knowledgebase' tool to perform a search, then return a
-            JSON object with:
-            - 'summary': a concise synthesis of the retrieved information in your own words
-            - 'sources': a list of citations with {type: "kb", title: "...", section: "..."}
-            - 'no_results': true/false
-
-            If the tool returns no matches, set "no_results": true and keep "sources" empty.
-            Do NOT make up information. Do NOT return raw search results or long quotes.
-        """,
-        tools=[
-            agents.function_tool(client_manager.knowledgebase.search_knowledgebase),
-        ],
-        # a faster, smaller model for quick searches
-        model=agents.OpenAIChatCompletionsModel(
-            model=worker_model, openai_client=client_manager.openai_client
-        ),
-    )
+    # gemini_grounding_tool = GeminiGroundingWithGoogleSearch(
+    #     model_settings=ModelSettings(model=worker_model)
+    # )
 
     # Main Agent: more expensive and slower, but better at complex planning
-    main_agent = agents.Agent(
+    # main_agent = agents.Agent(
+    main_agent = FoodPlanner(
         name="MainAgent",
         instructions=FOOD_PLANNER_INSTRUCTIONS,
         # Allow the planner agent to invoke the worker agent.
         # The long context provided to the worker agent is hidden from the main agent.
-        tools=[
-            agents.function_tool(
-                gemini_grounding_tool.get_web_search_grounded_response,
-                name_override="search_web",
-            ),
-        ],
+        # tools=[
+        #     agents.function_tool(
+        #         gemini_grounding_tool.get_web_search_grounded_response,
+        #         name_override="search_web",
+        #     ),
+        # ],
         # a larger, more capable model for planning and reasoning over summaries
         model=agents.OpenAIChatCompletionsModel(
             model=planner_model, openai_client=client_manager.openai_client
