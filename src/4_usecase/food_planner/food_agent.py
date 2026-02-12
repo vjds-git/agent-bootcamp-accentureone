@@ -1,10 +1,9 @@
 from agents import Agent, function_tool
 from dataclasses import dataclass
-from typing import Dict
+from typing import List, TypeVar, TypedDict
 import pandas as pd
 import json
 from pydantic import BaseModel
-from typing import TypeVar
 
 
 from src.utils.tools.gemini_grounding import GeminiGroundingWithGoogleSearch
@@ -15,38 +14,61 @@ recipe_db_filename = 'recipe_dataset.csv' #TODO: Change dummy filename for the r
 
 PandasDataFrame = TypeVar('pandas.core.frame.DataFrame')
 
+class Constraints(BaseModel):
+    nutrition_info: str
+    amount: float
+
+
 class RecipeParams(BaseModel):
     recipe_db: PandasDataFrame
     max_total_time: int
     diet_type: str
-    constraints: Dict[str, float]
+    constraints: List[Constraints]
 
-# @function_tool
+
+# class RecipeOutput(BaseModel):
+#      recipe_name: str
+#      prep_time: int
+#      servings: int
+#      ingredients: List[int]
+#      directions: List[int]
+#      rating: float
+#      url: str
+#      nutrition: Dict
+#      timing: Dict
+
+
+
+@function_tool
 def fetch_local_recipe(recipe_params: RecipeParams) -> str:
-        """
-        Fetch recipe from a local recipe dataset that meets user-specified parameters.
-        """
-        results = recipe_params.recipe_db.copy()
+    """
+    Fetch recipe from a local recipe dataset that meets user-specified parameters.
+
+    Args:
+        recipe_params: The parameters specified by the user/guidelines for the recipe
+    """
+    # recipe_db = pd.read_csv(recipe_db_filename)
+    results = recipe_params.recipe_db.copy()
  
-        # 1. Time Constraint
-        results = results[results['total_time'] <= recipe_params.max_total_time]
+    # 1. Time Constraint
+    results = results[results['total_time'] <= recipe_params.max_total_time]
  
-        # 2. Vegetarian Guardrail
-        if recipe_params.diet_type.lower() == "vegetarian":
-            meat_keywords = ['chicken', 'beef', 'pork', 'fish', 'lamb', 'shrimp']
-            results = results[~results['ingredients'].str.contains('|'.join(meat_keywords), case=False)]
+    # 2. Vegetarian Guardrail
+    if recipe_params.diet_type.lower() == "vegetarian":
+        meat_keywords = ['chicken', 'beef', 'pork', 'fish', 'lamb', 'shrimp']
+        results = results[~results['ingredients'].str.contains('|'.join(meat_keywords), case=False)]
  
-        # 3. Nutrition Dictionary Mapping (Quantitative Logic)
-        for key, limit in recipe_params.constraints.items():
-            if key in ['sodium', 'carbohydrates', 'fat', 'calories']:
-                results = results[results['nutrition'].apply(lambda x: x.get(key, 0) <= limit)]
+    # 3. Nutrition Dictionary Mapping (Quantitative Logic)
+    for key, limit in recipe_params.constraints.items():
+        if key in ['sodium', 'carbohydrates', 'fat', 'calories']:
+            results = results[results['nutrition'].apply(lambda x: x.get(key, 0) <= limit)]
  
-        if results.empty:
-            return "NO_MATCH: No local recipes meet these strict Canadian health criteria."
+    if results.empty:
+        return "NO_MATCH: No local recipes meet these strict Canadian health criteria."
  
-        # Sort by rating and return top result
-        match = results.sort_values(by='rating', ascending=False).head(1)
-        return match.to_json()
+    # Sort by rating and return top result
+    match = results.sort_values(by='rating', ascending=False).head(1)
+    return match.to_json()
 
 
 # TODO: Fix the implementation logic in modify_recipe
