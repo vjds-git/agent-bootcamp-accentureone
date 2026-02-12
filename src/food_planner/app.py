@@ -76,8 +76,6 @@ if __name__ == "__main__":
     # Initialize client manager
     client_manager = AsyncClientManager()
 
-    # Use smaller, faster model for focused search tasks
-    # worker_model = client_manager.configs.default_worker_model
     # Use larger, more capable model for complex planning and reasoning
     planner_model = client_manager.configs.default_planner_model
 
@@ -90,15 +88,6 @@ if __name__ == "__main__":
     main_agent = FoodPlanner(
         name="MainAgent",
         instructions=FOOD_PLANNER_INSTRUCTIONS,
-        # Allow the planner agent to invoke the worker agent.
-        # The long context provided to the worker agent is hidden from the main agent.
-        # tools=[
-        #     agents.function_tool(
-        #         gemini_grounding_tool.get_web_search_grounded_response,
-        #         name_override="search_web",
-        #     ),
-        # ],
-        # a larger, more capable model for planning and reasoning over summaries
         model=agents.OpenAIChatCompletionsModel(
             model=planner_model, openai_client=client_manager.openai_client
         ),

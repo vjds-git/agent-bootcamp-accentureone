@@ -5,15 +5,21 @@ import pandas as pd
 import json
 from pydantic import BaseModel
 from typing import TypeVar
+import os
 
 
 from src.utils.tools.gemini_grounding import GeminiGroundingWithGoogleSearch
 
 
-
-recipe_db_filename = 'recipe_dataset.csv' #TODO: Change dummy filename for the real dataset filename
+# Path to the recipe dataset
+RECIPE_DATA_PATH = os.path.join(os.path.dirname(__file__), '../../data/recipe_dataset.csv')
 
 PandasDataFrame = TypeVar('pandas.core.frame.DataFrame')
+
+class Constraints(BaseModel):
+    nutrition_info: str
+    amount: float
+
 
 class RecipeParams(BaseModel):
     recipe_db: PandasDataFrame
@@ -80,16 +86,24 @@ class FoodPlanner(Agent):
     def __post_init__(self):
         """Set the set of tools for the agent."""
 
+        # Load recipe dataset from data folder
+        if os.path.exists(RECIPE_DATA_PATH):
+            self.recipe_db = pd.read_csv(RECIPE_DATA_PATH)
+        else:
+            print(f"Warning: Recipe dataset not found at {RECIPE_DATA_PATH}")
+            self.recipe_db = pd.DataFrame()
+
         # Set the gemini grounding tool with the default model
         gemini_grounding_tool = GeminiGroundingWithGoogleSearch()
 
         # Add the gemini ground tool
-        self.tools.append(function_tool(
-                gemini_grounding_tool.get_web_search_grounded_response,
-                name_override="search_web",
-            ))
+        self.tools.append(
+                    function_tool(
+                        gemini_grounding_tool.get_web_search_grounded_response,
+                        name_override="search_web",
+                        strict_mode=False,
+                    )
+                )
         
-        # Add the fetch recipe tool
-        self.tools.append(fetch_local_recipe)
-        # self.tools.append(modify_recipe)
-        
+        # Add the fetch recipe tool (wrap plain function as an agent Tool)
+        self.tools.append(function_tool(fetch_local_recipe, strict_mode=False))
