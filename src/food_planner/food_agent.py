@@ -12,9 +12,7 @@ from src.utils.tools.gemini_grounding import GeminiGroundingWithGoogleSearch
 
 
 # Path to the recipe dataset
-RECIPE_DATA_PATH = os.path.join(os.path.dirname(__file__), '../../data/recipe_dataset.csv')
-
-PandasDataFrame = TypeVar('pandas.core.frame.DataFrame')
+RECIPE_DATA_PATH = os.path.join(os.path.dirname(__file__), '../../data/recipes.csv')
 
 class Constraints(BaseModel):
     nutrition_info: str
@@ -22,7 +20,6 @@ class Constraints(BaseModel):
 
 
 class RecipeParams(BaseModel):
-    recipe_db: PandasDataFrame
     max_total_time: int
     diet_type: str
     constraints: Dict[str, float]
@@ -32,7 +29,11 @@ def fetch_local_recipe(recipe_params: RecipeParams) -> str:
         """
         Fetch recipe from a local recipe dataset that meets user-specified parameters.
         """
-        results = recipe_params.recipe_db.copy()
+        import re
+        
+        # Load recipe dataset
+        recipe_db = pd.read_csv(RECIPE_DATA_PATH)
+        results = recipe_db.copy()
  
         # 1. Time Constraint
         results = results[results['total_time'] <= recipe_params.max_total_time]
@@ -42,10 +43,32 @@ def fetch_local_recipe(recipe_params: RecipeParams) -> str:
             meat_keywords = ['chicken', 'beef', 'pork', 'fish', 'lamb', 'shrimp']
             results = results[~results['ingredients'].str.contains('|'.join(meat_keywords), case=False)]
  
-        # 3. Nutrition Dictionary Mapping (Quantitative Logic)
+        # 3. Nutrition String Parsing (Quantitative Logic)
+        def extract_nutrition_value(nutrition_str, nutrient_key):
+            """Extract numeric value from nutrition string like 'Total Fat 18g 23%'"""
+            if not isinstance(nutrition_str, str):
+                return 0
+            
+            # Create a mapping of nutrient keys to their string patterns
+            patterns = {
+                'fat': r'Total Fat (\d+)',
+                'sodium': r'Sodium (\d+)',
+                'carbohydrates': r'Total Carbohydrate (\d+)',
+                'calories': r'(\d+)\s*(?:kcal|calories)?'  # Try to find calories
+            }
+            
+            pattern = patterns.get(nutrient_key.lower())
+            if pattern:
+                match = re.search(pattern, nutrition_str, re.IGNORECASE)
+                if match:
+                    return float(match.group(1))
+            return 0
+        
         for key, limit in recipe_params.constraints.items():
-            if key in ['sodium', 'carbohydrates', 'fat', 'calories']:
-                results = results[results['nutrition'].apply(lambda x: x.get(key, 0) <= limit)]
+            if key.lower() in ['sodium', 'carbohydrates', 'fat', 'calories']:
+                results = results[results['nutrition'].apply(
+                    lambda x: extract_nutrition_value(x, key) <= limit
+                )]
  
         if results.empty:
             return "NO_MATCH: No local recipes meet these strict Canadian health criteria."
