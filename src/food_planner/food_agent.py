@@ -35,8 +35,53 @@ def fetch_local_recipe(recipe_params: RecipeParams) -> str:
         recipe_db = pd.read_csv(RECIPE_DATA_PATH)
         results = recipe_db.copy()
  
-        # 1. Time Constraint
-        results = results[results['total_time'] <= recipe_params.max_total_time]
+        # Helper: parse human-readable time strings (e.g. '1 hrs 30 mins') into minutes
+        def parse_time_to_minutes(t):
+            if not isinstance(t, str):
+                return 0
+            hrs = 0
+            mins = 0
+            days = 0
+            # find days like '1 day' or '2 days'
+            m_d = re.search(r"(\d+)\s*(?:day|days)", t, re.IGNORECASE)
+            if m_d:
+                try:
+                    days = int(m_d.group(1))
+                except Exception:
+                    days = 0
+            # find hours like '1 hr' or '1 hrs' or '1 hours'
+            m_h = re.search(r"(\d+)\s*(?:hr|hrs|hour|hours)", t, re.IGNORECASE)
+            if m_h:
+                try:
+                    hrs = int(m_h.group(1))
+                except Exception:
+                    hrs = 0
+            # find minutes like '30 min' or '30 mins' or '30 minutes'
+            m_m = re.search(r"(\d+)\s*(?:min|mins|minute|minutes)", t, re.IGNORECASE)
+            if m_m:
+                try:
+                    mins = int(m_m.group(1))
+                except Exception:
+                    mins = 0
+            # fallback: if string looks like just a number, treat as minutes
+            if hrs == 0 and mins == 0:
+                m_num = re.search(r"^(\d+)$", t.strip())
+                if m_num:
+                    try:
+                        mins = int(m_num.group(1))
+                    except Exception:
+                        mins = 0
+            return days * 24 * 60 + hrs * 60 + mins
+
+        # add a numeric minutes column to allow reliable comparisons
+        results['total_time_minutes'] = results['total_time'].apply(parse_time_to_minutes)
+
+        # 1. Time Constraint (coerce the provided param to a number)
+        try:
+            max_time = int(float(recipe_params.max_total_time))
+        except Exception:
+            max_time = 0
+        results = results[results['total_time_minutes'] <= max_time]
  
         # 2. Vegetarian Guardrail
         if recipe_params.diet_type.lower() == "vegetarian":
@@ -66,14 +111,20 @@ def fetch_local_recipe(recipe_params: RecipeParams) -> str:
         
         for key, limit in recipe_params.constraints.items():
             if key.lower() in ['sodium', 'carbohydrates', 'fat', 'calories']:
+                try:
+                    limit_val = float(limit)
+                except Exception:
+                    # skip invalid limits
+                    continue
                 results = results[results['nutrition'].apply(
-                    lambda x: extract_nutrition_value(x, key) <= limit
+                    lambda x: extract_nutrition_value(x, key) <= limit_val
                 )]
  
         if results.empty:
             return "NO_MATCH: No local recipes meet these strict Canadian health criteria."
  
-        # Sort by rating and return top result
+        # Ensure rating is numeric, sort by rating and return top result
+        results['rating'] = pd.to_numeric(results['rating'], errors='coerce').fillna(0)
         match = results.sort_values(by='rating', ascending=False).head(1)
         return match.to_json()
 

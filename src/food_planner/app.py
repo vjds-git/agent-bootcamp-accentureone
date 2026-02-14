@@ -25,6 +25,8 @@ from src.utils.tools.gemini_grounding import (
 )
 
 from food_agent import FoodPlanner
+import logging
+import traceback
 
 
 async def _main(
@@ -49,19 +51,28 @@ async def _main(
         ),
     ):
         # Run the agent in streaming mode to get and display intermediate outputs
-        result_stream = agents.Runner.run_streamed(
-            main_agent,
-            input=query,
-            session=session,
-            max_turns=30,  # Increase max turns to support more complex queries
-        )
+        try:
+            result_stream = agents.Runner.run_streamed(
+                main_agent,
+                input=query,
+                session=session,
+                max_turns=30,  # Increase max turns to support more complex queries
+            )
 
-        async for _item in result_stream.stream_events():
-            turn_messages += oai_agent_stream_to_gradio_messages(_item)
-            if len(turn_messages) > 0:
-                yield turn_messages
+            async for _item in result_stream.stream_events():
+                turn_messages += oai_agent_stream_to_gradio_messages(_item)
+                if len(turn_messages) > 0:
+                    yield turn_messages
 
-        obs.update(output=result_stream.final_output)
+            obs.update(output=result_stream.final_output)
+        except Exception as e:
+            # Log full traceback and return a user-friendly message to the UI
+            logging.exception("Error while running agent stream")
+            tb = traceback.format_exc()
+            # Include the traceback in the observation for LangFuse / debugging
+            obs.update(output={"error": str(e), "traceback": tb})
+            # Yield a single turn message indicating failure
+            yield [ChatMessage("system", f"Agent failed: {e}")]
 
 
 if __name__ == "__main__":
