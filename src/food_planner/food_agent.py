@@ -140,13 +140,13 @@ def modify_recipe(recipe_json: str, target_servings: int, health_goal: str = "")
 def prepare_shopping_list(recipe_json: str) -> str:
     """
     Generates an organized shopping list from modified recipe ingredients.
-    Groups items by category (produce, dairy, proteins, pantry, etc.) and consolidates quantities.
+    Groups items by category and adjusts quantities to match realistic store minimums.
     
     Args:
         recipe_json: JSON string containing recipe with ingredients list
     
     Returns:
-        JSON string with categorized shopping list
+        JSON string with categorized shopping list, rounded to store units
     """
     try:
         data = json.loads(recipe_json)
@@ -168,6 +168,68 @@ def prepare_shopping_list(recipe_json: str) -> str:
             'Beverages': ['juice', 'wine', 'beer', 'coffee', 'tea']
         }
         
+        # Store minimums: defines realistic minimum quantities for items
+        STORE_MINIMUMS = {
+            'whole': {
+                'tomato': 1, 'onion': 1, 'lemon': 1, 'lime': 1, 'apple': 1, 'banana': 1, 'egg': 6,
+                'potato': 1, 'garlic': 1, 'pepper': 1, 'cucumber': 1, 'head': 1
+            },
+            'volume': {  # cups/tbsp -> minimum common store unit
+                'cup': 0.5, 'tbsp': 1, 'tsp': 1, 'ml': 250, 'l': 1
+            },
+            'weight': {  # grams/lbs -> minimum package sizes (in original unit)
+                'g': 100, 'oz': 4, 'lb': 1, 'kg': 0.5
+            }
+        }
+        
+        def normalize_quantity(qty_str, unit, ing_name):
+            """
+            Convert quantity to store-buyable amount.
+            Returns (adjusted_qty, adjusted_unit, note)
+            """
+            if qty_str == "To taste":
+                return qty_str, unit, ""
+            
+            try:
+                # Parse fraction or decimal
+                if "/" in qty_str:
+                    qty_float = float(Fraction(qty_str))
+                else:
+                    qty_float = float(qty_str)
+            except:
+                return qty_str, unit, ""
+            
+            unit_lower = unit.lower().strip() if unit else ""
+            ing_lower = ing_name.lower()
+            
+            # Check if it's a countable item (tomatoes, eggs, etc.)
+            for item_name, min_qty in STORE_MINIMUMS['whole'].items():
+                if item_name in ing_lower:
+                    # Round up to minimum
+                    adjusted = max(int(qty_float) if qty_float == int(qty_float) else qty_float, min_qty)
+                    if adjusted > qty_float:
+                        return str(int(adjusted)), "whole" if adjusted == int(adjusted) else unit, \
+                               f"(rounded up from {qty_str} to store minimum)"
+                    return qty_str, unit, ""
+            
+            # Check volume measurements
+            if any(u in unit_lower for u in ['cup', 'tbsp', 'tsp', 'ml', 'l']):
+                for u, min_vol in STORE_MINIMUMS['volume'].items():
+                    if u in unit_lower:
+                        if qty_float < min_vol:
+                            return str(min_vol), unit, f"(rounded up from {qty_str} to store minimum)"
+                        return qty_str, unit, ""
+            
+            # Check weight measurements
+            if any(u in unit_lower for u in ['g', 'oz', 'lb', 'kg']):
+                for u, min_wt in STORE_MINIMUMS['weight'].items():
+                    if u in unit_lower:
+                        if qty_float < min_wt:
+                            return str(min_wt), unit, f"(rounded up from {qty_str} to store minimum)"
+                        return qty_str, unit, ""
+            
+            return qty_str, unit, ""
+        
         # Parse and categorize ingredients
         shopping_dict = {cat: {} for cat in CATEGORIES.keys()}
         shopping_dict['Other'] = {}
@@ -184,6 +246,9 @@ def prepare_shopping_list(recipe_json: str) -> str:
             # Remove quantity from ingredient name
             ing_name = re.sub(r'^[\d.]+(?:/\d+)?\s*[a-z]*\s*', '', clean_ing, flags=re.IGNORECASE).strip()
             
+            # Normalize quantity to store minimum
+            adjusted_qty, adjusted_unit, norm_note = normalize_quantity(quantity, unit, ing_name)
+            
             # Categorize
             category = 'Other'
             for cat, keywords in CATEGORIES.items():
@@ -194,8 +259,11 @@ def prepare_shopping_list(recipe_json: str) -> str:
             # Consolidate quantities (simple addition for same items)
             if ing_name not in shopping_dict[category]:
                 shopping_dict[category][ing_name] = {
-                    'quantity': quantity,
-                    'unit': unit,
+                    'original_quantity': quantity,
+                    'original_unit': unit,
+                    'quantity': adjusted_qty,
+                    'unit': adjusted_unit,
+                    'note': norm_note,
                     'raw': ing
                 }
         
@@ -203,8 +271,7 @@ def prepare_shopping_list(recipe_json: str) -> str:
         result = {
             'recipe_name': recipe.get('recipe_name', 'Unknown Recipe'),
             'total_servings': recipe.get('servings', 1),
-            'shopping_list': shopping_dict,
-            'formatted': {}
+            'shopping_list': shopping_dict
         }
         
         # Create formatted text version
@@ -215,7 +282,10 @@ def prepare_shopping_list(recipe_json: str) -> str:
                 for ing_name, details in items.items():
                     qty = details['quantity']
                     unit = details['unit']
+                    note = details['note']
                     line = f"  ☐ {qty} {unit} {ing_name}".replace('  ☐ To taste  ', '  ☐ ')
+                    if note:
+                        line += f" {note}"
                     formatted_text.append(line)
         
         result['formatted_text'] = '\n'.join(formatted_text)
