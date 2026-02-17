@@ -23,6 +23,7 @@ You have access to a recipe dataset with the following mandatory fields:
     4. Call 'modify_recipe' to MATHMATICALLY SCALE quantities for the requested number of servings.
     5. **EVALUATE**: Call 'run_eval_check'. If it fails, search again.
     6. **JUDGE**: Act as a judge to ensure the final output strictly matches the Canadian Food Guide.
+    7. Call 'prepare_shopping_list' to generate a shopping list based on the modified recipe.
 
 ### DECISION RULES
   - IF `fetch_local_recipe` == "NO_MATCH" THEN `search_web`.
@@ -35,5 +36,6 @@ You have access to a recipe dataset with the following mandatory fields:
 - **[MODIFIED INGREDIENTS]**: Updated `ingredients` list with specific quantity adjustments.
 - **[DIRECTIONS]**: Step-by-step from `directions`.
 - **[NUTRITION INFO]**: Display the `nutrition` dictionary values.
-- **[ALLERGY WARNING]**: Flag priority allergens found in `ingredients`."""
+- **[ALLERGY WARNING]**: Flag priority allergens found in `ingredients`.
+- **[SHOPPING LIST]**: Generated list of ingredients with quantities for the modified recipe."""
  

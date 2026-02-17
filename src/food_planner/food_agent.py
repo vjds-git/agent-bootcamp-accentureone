@@ -93,6 +93,7 @@ def fetch_local_recipe(params: RecipeParams) -> str:
     
     return results.sort_values('rating', ascending=False).head(1).to_json(orient='records')
 
+
 def check_cfia_recalls(ingredients_json: str) -> str:
     """SAFETY CHECK: Verifies ingredients against CFIA Food Recalls."""
     try:
@@ -100,6 +101,7 @@ def check_cfia_recalls(ingredients_json: str) -> str:
         recalls = [i for i in ingredients if "romaine" in i.lower()]
         return f"FAIL: Active recall on {recalls}" if recalls else "PASS"
     except: return "ERROR: Invalid ingredients format."
+
 
 def modify_recipe(recipe_json: str, target_servings: int, health_goal: str = "") -> str:
     """QUANTITY ENGINE: Scales all ingredients mathematically for target servings."""
@@ -134,6 +136,95 @@ def modify_recipe(recipe_json: str, target_servings: int, health_goal: str = "")
     except Exception as e:
         return f"ERROR in modify_recipe: {str(e)}"
 
+
+def prepare_shopping_list(recipe_json: str) -> str:
+    """
+    Generates an organized shopping list from modified recipe ingredients.
+    Groups items by category (produce, dairy, proteins, pantry, etc.) and consolidates quantities.
+    
+    Args:
+        recipe_json: JSON string containing recipe with ingredients list
+    
+    Returns:
+        JSON string with categorized shopping list
+    """
+    try:
+        data = json.loads(recipe_json)
+        recipe = data[0] if isinstance(data, list) else data
+        ingredients = recipe.get('ingredients', [])
+        
+        if not ingredients:
+            return json.dumps({"error": "No ingredients found in recipe"})
+        
+        # Food categories
+        CATEGORIES = {
+            'Produce': ['tomato', 'onion', 'garlic', 'lettuce', 'carrot', 'celery', 'spinach', 'broccoli', 
+                       'pepper', 'cucumber', 'potato', 'apple', 'banana', 'lemon', 'lime', 'berry', 'herb'],
+            'Proteins': ['chicken', 'beef', 'pork', 'fish', 'salmon', 'shrimp', 'tofu', 'egg', 'meat', 'protein'],
+            'Dairy': ['milk', 'cheese', 'butter', 'yogurt', 'cream', 'sour cream'],
+            'Pantry': ['flour', 'sugar', 'salt', 'oil', 'sauce', 'spice', 'rice', 'pasta', 'bean', 'canned',
+                      'vinegar', 'broth', 'stock', 'honey', 'peanut butter', 'cocoa'],
+            'Frozen': ['frozen', 'ice'],
+            'Beverages': ['juice', 'wine', 'beer', 'coffee', 'tea']
+        }
+        
+        # Parse and categorize ingredients
+        shopping_dict = {cat: {} for cat in CATEGORIES.keys()}
+        shopping_dict['Other'] = {}
+        
+        for ing in ingredients:
+            # Remove adaptation notes
+            clean_ing = re.sub(r'\[ADAPTATION:.*?\]', '', ing).strip()
+            
+            # Extract quantity (e.g., "2 cups", "1.5 tbsp", "3/4 cup")
+            qty_match = re.match(r'^([\d.]+(?:/\d+)?)\s*([a-z]+)?', clean_ing, re.IGNORECASE)
+            quantity = qty_match.group(1) if qty_match else "To taste"
+            unit = qty_match.group(2) if qty_match and qty_match.group(2) else ""
+            
+            # Remove quantity from ingredient name
+            ing_name = re.sub(r'^[\d.]+(?:/\d+)?\s*[a-z]*\s*', '', clean_ing, flags=re.IGNORECASE).strip()
+            
+            # Categorize
+            category = 'Other'
+            for cat, keywords in CATEGORIES.items():
+                if any(kw in ing_name.lower() for kw in keywords):
+                    category = cat
+                    break
+            
+            # Consolidate quantities (simple addition for same items)
+            if ing_name not in shopping_dict[category]:
+                shopping_dict[category][ing_name] = {
+                    'quantity': quantity,
+                    'unit': unit,
+                    'raw': ing
+                }
+        
+        # Format into readable shopping list
+        result = {
+            'recipe_name': recipe.get('recipe_name', 'Unknown Recipe'),
+            'total_servings': recipe.get('servings', 1),
+            'shopping_list': shopping_dict,
+            'formatted': {}
+        }
+        
+        # Create formatted text version
+        formatted_text = []
+        for category, items in shopping_dict.items():
+            if items:
+                formatted_text.append(f"\n【 {category.upper()} 】")
+                for ing_name, details in items.items():
+                    qty = details['quantity']
+                    unit = details['unit']
+                    line = f"  ☐ {qty} {unit} {ing_name}".replace('  ☐ To taste  ', '  ☐ ')
+                    formatted_text.append(line)
+        
+        result['formatted_text'] = '\n'.join(formatted_text)
+        
+        return json.dumps(result, indent=2)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to prepare shopping list: {str(e)}"})
+
 # --- 3. THE FOOD PLANNER AGENT ---
 
 @dataclass
@@ -148,6 +239,7 @@ class FoodPlanner(Agent):
             ))
         except ImportError: pass
 
-        self.tools.append(function_tool(fetch_local_recipe, strict_mode=True))
-        self.tools.append(function_tool(check_cfia_recalls, strict_mode=True))
-        self.tools.append(function_tool(modify_recipe, strict_mode=True))
+        self.tools.append(function_tool(fetch_local_recipe))
+        self.tools.append(function_tool(check_cfia_recalls))
+        self.tools.append(function_tool(modify_recipe))
+        self.tools.append(function_tool(prepare_shopping_list))
