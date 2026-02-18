@@ -28,6 +28,7 @@ class RecipeParams(BaseModel):
     max_total_time: int = Field(..., description="Maximum total cooking time in minutes")
     dietary_restrictions: List[str] = Field(default_factory=list)
     constraints: Optional[Nutrients] = Field(default=None)
+    recipe_type: str = Field(..., description="Type of recipe (main dish, snack, side, drink)")
 
 # --- 2. OPERATIONAL TOOLS ---
 
@@ -72,7 +73,11 @@ def fetch_local_recipe(params: RecipeParams) -> str:
     df['total_mins'] = df['total_time'].apply(parse_time)
     results = df[df['total_mins'] <= params.max_total_time].copy()
 
-    # 3. Nutrition Filtering
+    # 3. Filter by Recipe Type
+    if params.recipe_type:
+        results = results[results['cuisine_path'].str.contains(params.recipe_type, case=False, na=False)]
+
+    # 4. Nutrition Filtering
     def get_nutr(nut_str, key):
         if not isinstance(nut_str, str): return 0
         match = re.search(rf"{key}\D*(\d+\.?\d*)", nut_str, re.IGNORECASE)
@@ -90,36 +95,8 @@ def fetch_local_recipe(params: RecipeParams) -> str:
     if results.empty:
         # Crucial: This string triggers the LLM fallback logic
         return "NO_MATCH: No local recipes meet criteria. ACTION REQUIRED: Use search_web to find an alternative."
-
-    # Rotate through the top N candidates across repeated calls so the agent
-    # doesn't keep returning the exact same top recipe in a loop.
-    # Track attempts per parameter-set in-memory (process lifetime).
-    try:
-        key = json.dumps(params.model_dump(exclude_none=True), sort_keys=True)
-    except Exception:
-        key = str(hash(str(params)))
-
-    if '_FETCH_STATE' not in globals():
-        globals()['_FETCH_STATE'] = {}
-
-    state = globals()['_FETCH_STATE']
-    MAX_ATTEMPTS = 5
-
-    # Ensure stable ordering and pick next candidate based on attempt index
-    sorted_results = results.sort_values('rating', ascending=False).reset_index(drop=True)
-    num_candidates = min(len(sorted_results), MAX_ATTEMPTS)
-
-    attempt = state.get(key, 0)
-    if attempt >= MAX_ATTEMPTS:
-        return "NO_MATCH: Exhausted local alternatives after 5 attempts. ACTION REQUIRED: Use search_web to find an alternative."
-
-    idx = attempt if attempt < num_candidates else num_candidates - 1
-    chosen = sorted_results.iloc[[idx]]
-
-    # increment attempt counter for next call
-    state[key] = attempt + 1
-
-    return chosen.to_json(orient='records')
+    
+    return results.sort_values('rating', ascending=False).head(1).to_json(orient='records')
 
 
 def check_cfia_recalls(ingredients_json: str) -> str:
@@ -163,6 +140,27 @@ def modify_recipe(recipe_json: str, target_servings: int, health_goal: str = "")
         return json.dumps(recipe)
     except Exception as e:
         return f"ERROR in modify_recipe: {str(e)}"
+
+
+def get_local_recipe_type() -> List[Any]:
+    """
+    Extracts unique recipe types from the local dataset based on 'cuisine_path'.
+    Returns:
+        A sorted list of unique recipe types (e.g., main dish, snack, side, drink).
+    """
+    df = pd.read_csv(RECIPE_DATA_PATH)
+
+    # Extract the 'cuisine_path' column
+    cuisine_path_column = df['cuisine_path']
+
+    # Split the values in the 'cuisine_path' column by a delimiter (e.g., '/')
+    # Extract the first component of each path and collect unique values
+    first_components = cuisine_path_column.dropna().apply(lambda x: x.split('/')[1]).unique()
+
+    # Convert the result to a sorted list for better readability
+    unique_first_components = sorted(first_components)
+
+    return unique_first_components
 
 
 def prepare_shopping_list(recipe_json: str) -> str:
@@ -336,7 +334,8 @@ class FoodPlanner(Agent):
                 strict_mode=True
             ))
         except ImportError: pass
-
+        
+        self.tools.append(function_tool(get_local_recipe_type))
         self.tools.append(function_tool(fetch_local_recipe))
         self.tools.append(function_tool(check_cfia_recalls))
         self.tools.append(function_tool(modify_recipe))

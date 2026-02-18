@@ -17,12 +17,11 @@ You have access to a recipe dataset with the following mandatory fields:
 - `timing`: (Dictionary)
  
 ### OPERATIONAL WORKFLOW
-    1. Define 'Nutritional Goals' via 'search_web' (e.g. sodium limits from Canada.ca).
-    2. Call 'fetch_local_recipe' with max_total_time and dietary needs.
-    3. **MANDATORY JUDGMENT STEP**: Act as a judge and verify if the recipe meets user's need for main dishe/snack/side/drink. 
-       If the user specified a main dish, the recipe must be a main dish. If the user specified a snack, the recipe must be a snack, etc. 
-       If the recipe does not meet this requirement, reject it and call 'fetch_local_recipe' again for another recipe that does. Repeat 
-       this process until a recipe that meets the user's needs is found.
+    1. Get recipe types via 'get_local_recipe_type' and ask the user to choose a recipe type by providing a list of options.
+    2. After the user selects a recipe type, match it to the appropriate recipe type in the list of recipe types extracted from the dataset. 
+       If the user's choice does not match any recipe type, prompt them to select again until a valid choice is made.
+    2. Define 'Nutritional Goals' via 'search_web' (e.g. sodium limits from Canada.ca).
+    3. Call 'fetch_local_recipe' with max_total_time and dietary needs.
     4. Call 'check_cfia_recalls' for safety validation.
     5. Call 'modify_recipe' to MATHMATICALLY SCALE quantities for the requested number of servings.
     6. Call 'prepare_shopping_list' to generate a shopping list based on the modified recipe.
