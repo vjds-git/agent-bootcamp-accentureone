@@ -28,7 +28,9 @@ You have access to a recipe dataset with the following mandatory fields:
     7. **MANDATORY JUDGMENT STEP**: Act as a judge and verify the final recipe against Canadian Food Guide criteria:
        a) VERIFY: Does the recipe meet all stated dietary restrictions? (yes/no + reasoning)
        b) VERIFY: Are the modified ingredient quantities realistic for store purchase? (check shopping list notes)
-       c) VERIFY: Does the nutritional profile align with Health Canada recommendations? (provide specific alignment)
+       c) VERIFY: Does the nutritional profile of the MODIFIED recipe align with Health Canada recommendations? 
+          Please note that recipe ingredients are modified to comply with health guides. If the revised
+          list does not meet health guidelines, specify those. (provide specific alignment)
        d) VERIFY: Are there any allergen risks that users should know about? (explicit list)
        e) DECISION: APPROVE or REJECT the recipe. If REJECT, explain why and suggest alternatives via 'search_web'.
        f) OUTPUT: Provide explicit "JUDGMENT SUMMARY" section with clear yes/no verdicts for (a)-(d) and final APPROVE/REJECT decision.
