@@ -6,6 +6,7 @@ from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 from pydantic import BaseModel, Field, ConfigDict
 from fractions import Fraction
+from langfuse import observe
 
 # Import your agent framework
 from agents import Agent, function_tool 
@@ -31,7 +32,7 @@ class RecipeParams(BaseModel):
     recipe_type: str = Field(..., description="Type of recipe (main dish, snack, side, drink)")
 
 # --- 2. OPERATIONAL TOOLS ---
-
+@observe()
 def fetch_local_recipe(params: RecipeParams) -> str:
     """Queries the local CSV for recipes. Returns 'NO_MATCH' if none satisfy criteria."""
     if not os.path.exists(RECIPE_DATA_PATH):
@@ -98,7 +99,7 @@ def fetch_local_recipe(params: RecipeParams) -> str:
     
     return results.sort_values('rating', ascending=False).head(1).to_json(orient='records')
 
-
+@observe()
 def check_cfia_recalls(ingredients_json: str) -> str:
     """SAFETY CHECK: Verifies ingredients against CFIA Food Recalls."""
     try:
@@ -108,6 +109,7 @@ def check_cfia_recalls(ingredients_json: str) -> str:
     except: return "ERROR: Invalid ingredients format."
 
 
+@observe()
 def modify_recipe(recipe_json: str, target_servings: int, health_goal: str = "") -> str:
     """QUANTITY ENGINE: Scales all ingredients mathematically for target servings."""
     try:
@@ -142,6 +144,7 @@ def modify_recipe(recipe_json: str, target_servings: int, health_goal: str = "")
         return f"ERROR in modify_recipe: {str(e)}"
 
 
+@observe()
 def get_local_recipe_type() -> List[Any]:
     """
     Extracts unique recipe types from the local dataset based on 'cuisine_path'.
@@ -163,6 +166,7 @@ def get_local_recipe_type() -> List[Any]:
     return unique_first_components
 
 
+@observe()
 def prepare_shopping_list(recipe_json: str) -> str:
     """
     Generates an organized shopping list from modified recipe ingredients.
@@ -328,8 +332,8 @@ class FoodPlanner(Agent):
     def __post_init__(self):
         try:
             from src.utils.tools.gemini_grounding import GeminiGroundingWithGoogleSearch
-            self.tools.append(function_tool(
-                GeminiGroundingWithGoogleSearch().get_web_search_grounded_response, 
+            self.tools.append(function_tool(observe(
+                GeminiGroundingWithGoogleSearch().get_web_search_grounded_response), 
                 name_override="search_web",
                 strict_mode=True
             ))

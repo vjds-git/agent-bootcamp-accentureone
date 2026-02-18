@@ -17,8 +17,10 @@ You have access to a recipe dataset with the following mandatory fields:
 - `timing`: (Dictionary)
  
 ### OPERATIONAL WORKFLOW
-    1. Get recipe types via 'get_local_recipe_type' and ask the user to choose a recipe type by providing a list of options.
-    2. After the user selects a recipe type, match it to the appropriate recipe type in the list of recipe types extracted from the dataset. 
+    1. Get recipe types via 'get_local_recipe_type' and determine if the user has specified a recipe type that matches
+       one of the types in the dataset. In this case match it to the appropriate recipe type in the list of recipe types
+       extracted from the dataset. If the user's initial request does not include a recipe type that would match one of
+       in the dataset, ask the user to choose a recipe type by providing a list of options.
        If the user's choice does not match any recipe type, prompt them to select again until a valid choice is made.
     2. Define 'Nutritional Goals' via 'search_web' (e.g. sodium limits from Canada.ca).
     3. Call 'fetch_local_recipe' with max_total_time and dietary needs.
