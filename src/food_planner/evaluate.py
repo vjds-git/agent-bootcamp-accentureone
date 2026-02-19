@@ -23,8 +23,8 @@ import logging
 import traceback
 
 
-# Path to the recipe dataset
-EVAL_QUERY_PATH = os.path.join(os.path.dirname(__file__), '../../data/eval_query.csv')
+# Path to the evaluation queries
+EVAL_QUERY_PATH = os.path.join(os.path.dirname(__file__), '../../data/culinary_agent_queries_200_with_ids.csv')
 
 
 async def _main(main_agent, query
