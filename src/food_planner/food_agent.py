@@ -29,6 +29,7 @@ class RecipeParams(BaseModel):
     dietary_restrictions: List[str] = Field(default_factory=list)
     constraints: Optional[Nutrients] = Field(default=None)
     recipe_type: str = Field(..., description="Type of recipe (main dish, snack, side, drink)")
+    required_ingredients: List[str] = Field(default_factory=list, description="Ingredients that must be in the recipe")
 
 # --- 2. OPERATIONAL TOOLS ---
 
@@ -77,7 +78,12 @@ def fetch_local_recipe(params: RecipeParams) -> str:
     if params.recipe_type:
         results = results[results['cuisine_path'].str.contains(params.recipe_type, case=False, na=False)]
 
-    # 4. Nutrition Filtering
+    # 4. Filter by Required Ingredients
+    if params.required_ingredients:
+        for ing in params.required_ingredients:
+            results = results[results['ingredients'].str.contains(ing, case=False, na=False)]
+
+    # 5. Nutrition Filtering
     def get_nutr(nut_str, key):
         if not isinstance(nut_str, str): return 0
         match = re.search(rf"{key}\D*(\d+\.?\d*)", nut_str, re.IGNORECASE)
@@ -335,8 +341,8 @@ class FoodPlanner(Agent):
             ))
         except ImportError: pass
         
-        self.tools.append(function_tool(get_local_recipe_type))
-        self.tools.append(function_tool(fetch_local_recipe))
-        self.tools.append(function_tool(check_cfia_recalls))
-        self.tools.append(function_tool(modify_recipe))
-        self.tools.append(function_tool(prepare_shopping_list))
+        self.tools.append(function_tool(get_local_recipe_type, strict_mode=True))
+        self.tools.append(function_tool(fetch_local_recipe, strict_mode=True))
+        self.tools.append(function_tool(check_cfia_recalls, strict_mode=True))
+        self.tools.append(function_tool(modify_recipe, strict_mode=True))
+        self.tools.append(function_tool(prepare_shopping_list, strict_mode=True))
